@@ -178,18 +178,19 @@ app.get('/api/stream/watch', async (req, res) => {
   }
 });
 
-app.get('/api/proxy-hls', async (req, res) => {
+app.get('/api/embed-page', async (req, res) => {
   try {
     const url = req.query.url;
     if (!url) return res.status(400).json({ error: 'Missing url' });
 
-    const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' };
-    if (req.query.referer) headers['Referer'] = req.query.referer;
-
     const response = await axios.get(url, {
-      responseType: 'stream',
-      timeout: 30000,
-      headers,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
+      },
+      responseType: 'text',
+      timeout: 15000,
       validateStatus: () => true
     });
 
@@ -197,63 +198,25 @@ app.get('/api/proxy-hls', async (req, res) => {
       return res.status(response.status).json({ error: 'Upstream ' + response.status });
     }
 
-    const contentType = response.headers['content-type'] || '';
+    let html = response.data;
 
-    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.setHeader('X-Frame-Options', 'ALLOWALL');
+    res.removeHeader('Content-Security-Policy');
 
-    if (contentType.includes('m3u8') || contentType.includes('vnd.apple.mpegurl')) {
-      let data = '';
-      response.data.on('data', chunk => data += chunk.toString());
-      response.data.on('end', () => {
-        const base = url.substring(0, url.lastIndexOf('/') + 1);
-        const proxyBase = `/api/proxy-segment?referer=${encodeURIComponent(req.query.referer || '')}&url=`;
-        const rewritten = data.split('\n').map(line => {
-          const t = line.trim();
-          if (t && !t.startsWith('#') && !t.startsWith('http')) {
-            return proxyBase + encodeURIComponent(base + t);
-          }
-          if (t && t.startsWith('http') && !t.includes('/api/proxy-segment')) {
-            return proxyBase + encodeURIComponent(t);
-          }
-          return line;
-        }).join('\n');
-        res.send(rewritten);
-      });
-    } else {
-      response.data.pipe(res);
-    }
+    html = html.replace(/<base\s[^>]*>/gi, `<base href="${url.replace(/\/[^/]*$/, '/')}">`);
+    html = html.replace(/x-frame-options/gi, 'x-frame-options-allow');
+    html = html.replace(/X-Frame-Options/gi, 'X-Frame-Options-Allow');
+    html = html.replace(/frame-ancestors/gi, 'frame-ancestors-allow');
+    html = html.replace(/top\.location/gi, '//top.location');
+    html = html.replace(/parent\.location/gi, '//parent.location');
+    html = html.replace(/self\.location/gi, '//self.location');
+    html = html.replace(/window\.location/gi, 'window.location_url');
+
+    res.send(html);
   } catch (e) {
-    res.status(500).json({ error: 'HLS proxy failed', detail: e.message });
-  }
-});
-
-app.get('/api/proxy-segment', async (req, res) => {
-  try {
-    const url = req.query.url;
-    if (!url) return res.status(400).json({ error: 'Missing url' });
-
-    const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' };
-    if (req.query.referer) headers['Referer'] = req.query.referer;
-
-    const response = await axios.get(url, {
-      responseType: 'stream',
-      timeout: 30000,
-      headers,
-      validateStatus: () => true
-    });
-
-    if (response.status !== 200) {
-      return res.status(response.status).json({ error: 'Segment error ' + response.status });
-    }
-
-    res.setHeader('Content-Type', response.headers['content-type'] || 'video/MP2T');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    response.data.pipe(res);
-  } catch (e) {
-    res.status(500).json({ error: 'Segment proxy failed' });
+    res.status(500).json({ error: 'Embed proxy failed', detail: e.message });
   }
 });
 

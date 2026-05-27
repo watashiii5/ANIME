@@ -771,9 +771,10 @@ function tryEmbedPlayer(container, url) {
   if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
   if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
   const providerName = currentProvider === 'hianime' ? 'HiAnime' : currentProvider === 'animesaturn' ? 'AnimeSaturn' : currentProvider === 'animeunity' ? 'AnimeUnity' : 'Provider';
+  const proxyUrl = `/api/embed-page?url=${encodeURIComponent(url)}`;
   container.innerHTML = `
     <div class="embed-container">
-      <iframe src="${url}"
+      <iframe src="${proxyUrl}"
         allowfullscreen
         allow="autoplay; fullscreen"
         sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
