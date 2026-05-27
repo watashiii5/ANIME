@@ -593,6 +593,8 @@ function loadEpisode(episodeId, number, animeId, title, image) {
   currentAnimeTitle = title;
   currentAnimeImage = image;
   currentEpisodeUrl = episodeUrlMap[episodeId] || '';
+  lastVideoUrl = '';
+  lastVideoHeaders = null;
 
   document.querySelectorAll('.watch-ep-btn').forEach(b => b.classList.remove('active'));
   const btn = document.querySelector(`.watch-ep-btn[onclick*="loadEpisode('${episodeId}'"]`);
@@ -633,6 +635,8 @@ async function loadVideo(episodeId, resumeTime) {
 
     let videoUrl = selectedSource.url;
     const isM3U8 = videoUrl.includes('.m3u8');
+    lastVideoUrl = videoUrl;
+    lastVideoHeaders = res.headers || null;
 
     if (isM3U8) {
       const params = new URLSearchParams({ url: videoUrl });
@@ -706,54 +710,61 @@ async function loadVideo(episodeId, resumeTime) {
 
     video.addEventListener('error', () => {
       if (container.querySelector('video')) {
-        showEmbedFallback(container);
+        showVideoFallback(container);
       }
     });
   } catch (err) {
-    showEmbedFallback(container, err.message);
+    showVideoFallback(container, err.message);
   }
 }
 
-function showEmbedFallback(container, msg) {
-  const canEmbed = currentEpisodeUrl && (
-    currentEpisodeUrl.includes('animesaturn') ||
-    currentEpisodeUrl.includes('animeunity')
-  );
+let lastVideoUrl = '';
+let lastVideoHeaders = null;
+
+function showVideoFallback(container, msg) {
   container.innerHTML = `
     <div class="video-placeholder">
       <div style="font-size:48px">⚠️</div>
       <p>${msg ? 'Failed to load video' : 'Video failed to load (source blocked)'}</p>
       ${msg ? `<p style="font-size:12px;color:var(--text3)">${msg}</p>` : ''}
-      ${canEmbed ? `
-        <button class="btn btn-primary" onclick="switchToEmbed()" style="margin-top:12px">
-          ▶ Switch to Embed Player
-        </button>
-      ` : `
-        <p style="font-size:12px;color:var(--text3)">Try another episode or come back later</p>
-      `}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px">
+        ${lastVideoUrl ? `<button class="btn btn-secondary" onclick="tryDirectPlay()">▶ Try Direct Play</button>` : ''}
+        ${currentEpisodeUrl ? `
+          <button class="btn btn-secondary" onclick="openEpisodeTab()">↗ Open on Provider</button>
+        ` : ''}
+      </div>
+      ${!lastVideoUrl && !currentEpisodeUrl ? '<p style="font-size:12px;color:var(--text3)">Try another episode or come back later</p>' : ''}
     </div>`;
 }
 
-function switchToEmbed() {
+function tryDirectPlay() {
   const container = document.getElementById('videoPlayer');
-  if (!container || !currentEpisodeUrl) return;
+  if (!container || !lastVideoUrl) return;
   if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
   if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
-  container.innerHTML = `
-    <div class="embed-container">
-      <iframe src="${currentEpisodeUrl}"
-        allowfullscreen
-        allow="autoplay; fullscreen"
-        sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-        loading="lazy">
-      </iframe>
-    </div>`;
-  if (currentAnimeId && currentEpisodeId) {
-    Tracker.saveProgress(
-      currentAnimeId, currentAnimeTitle, currentAnimeImage,
-      currentEpisodeId, currentEpisodeNumber, 0, 0
-    );
+  const isM3U8 = lastVideoUrl.includes('.m3u8');
+  container.innerHTML = `<video id="animeVideo" controls autoplay></video>`;
+  const video = document.getElementById('animeVideo');
+  if (isM3U8 && typeof Hls !== 'undefined' && Hls.isSupported()) {
+    hlsInstance = new Hls();
+    hlsInstance.loadSource(lastVideoUrl);
+    hlsInstance.attachMedia(video);
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+  } else {
+    video.src = lastVideoUrl;
   }
+  video.addEventListener('error', () => {
+    container.innerHTML = `
+      <div class="video-placeholder">
+        <div style="font-size:48px">😕</div>
+        <p>Direct play also failed</p>
+        ${currentEpisodeUrl ? `<button class="btn btn-primary" onclick="openEpisodeTab()" style="margin-top:12px">↗ Open on Provider</button>` : ''}
+      </div>`;
+  });
+}
+
+function openEpisodeTab() {
+  if (currentEpisodeUrl) window.open(currentEpisodeUrl, '_blank');
 }
 
 async function renderSearch(query) {
