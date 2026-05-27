@@ -7,7 +7,9 @@ const API = {
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
-      throw new Error(res.status === 429 ? 'Rate limited - try again' : `HTTP ${res.status}`);
+      let detail = '';
+      try { const j = await res.clone().json(); detail = j.detail || j.error || ''; } catch {}
+      throw new Error(detail || (res.status === 429 ? 'Rate limited - try again' : `HTTP ${res.status}`));
     }
   },
   searchAnime(query, page = 1) {
@@ -34,8 +36,10 @@ const API = {
   streamSearch(query) {
     return this.get(`/api/stream/search?q=${encodeURIComponent(query)}`);
   },
-  streamInfo(id) {
-    return this.get(`/api/stream/info?id=${encodeURIComponent(id)}`);
+  streamInfo(id, provider) {
+    let url = `/api/stream/info?id=${encodeURIComponent(id)}`;
+    if (provider) url += `&provider=${provider}`;
+    return this.get(url);
   },
   streamWatch(episodeId) {
     return this.get(`/api/stream/watch?episodeId=${encodeURIComponent(episodeId)}`);
@@ -334,10 +338,12 @@ async function renderWatch(params) {
 
     const searchRes = await API.streamSearch(a.title);
     let streamResults = searchRes.results || [];
+    let currentProvider = searchRes.provider;
 
     if (streamResults.length === 0 && a.title_english) {
       const r2 = await API.streamSearch(a.title_english);
       streamResults = r2.results || [];
+      currentProvider = r2.provider || currentProvider;
     }
 
     let bestMatch = streamResults.find(r => {
@@ -359,7 +365,7 @@ async function renderWatch(params) {
       return;
     }
 
-    const infoRes = await API.streamInfo(bestMatch.id);
+    const infoRes = await API.streamInfo(bestMatch.id, currentProvider);
     let episodes = infoRes.episodes || [];
 
     if (episodes.length === 0) {
