@@ -741,7 +741,7 @@ let lastVideoUrl = '';
 let lastVideoHeaders = null;
 
 function showVideoFallback(container, msg) {
-  const providerName = currentProvider === 'gogoanime' ? 'Gogoanime' : currentProvider === 'animesaturn' ? 'AnimeSaturn' : currentProvider === 'animeunity' ? 'AnimeUnity' : currentProvider || 'Provider';
+  const providerName = currentProvider === 'hianime' ? 'HiAnime' : currentProvider === 'animesaturn' ? 'AnimeSaturn' : currentProvider === 'animeunity' ? 'AnimeUnity' : currentProvider || 'Provider';
   container.innerHTML = `
     <div class="video-placeholder">
       <div style="font-size:48px">⚠️</div>
@@ -773,7 +773,7 @@ function tryDirectPlay() {
     video.src = lastVideoUrl;
   }
   video.addEventListener('error', () => {
-    const providerName = currentProvider === 'gogoanime' ? 'Gogoanime' : currentProvider === 'animesaturn' ? 'AnimeSaturn' : currentProvider === 'animeunity' ? 'AnimeUnity' : 'Provider';
+    const providerName = currentProvider === 'hianime' ? 'HiAnime' : currentProvider === 'animesaturn' ? 'AnimeSaturn' : currentProvider === 'animeunity' ? 'AnimeUnity' : 'Provider';
     container.innerHTML = `
       <div class="video-placeholder">
         <div style="font-size:48px">😕</div>

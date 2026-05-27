@@ -21,7 +21,7 @@ function cacheSet(key, data) {
 }
 
 const providers = [
-  { name: 'gogoanime', instance: new ANIME.Gogoanime() },
+  { name: 'hianime', instance: new ANIME.Hianime() },
   { name: 'animesaturn', instance: new ANIME.AnimeSaturn() },
   { name: 'animeunity', instance: new ANIME.AnimeUnity() },
 ];
