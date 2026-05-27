@@ -34,36 +34,60 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 let lastJikan = 0;
+const jikanQueue = [];
+let processingQueue = false;
+
+async function processQueue() {
+  if (processingQueue) return;
+  processingQueue = true;
+  while (jikanQueue.length > 0) {
+    const { resolve, reject, url, params, key } = jikanQueue.shift();
+    try {
+      const wait = Math.max(0, 1200 - (Date.now() - lastJikan));
+      if (wait > 0) await new Promise(r => setTimeout(r, wait));
+      const r = await axios.get(url, { params, timeout: 15000 });
+      lastJikan = Date.now();
+      if (key) cacheSet(key, r.data);
+      resolve(r.data);
+    } catch (e) {
+      if (e.response?.status === 429) {
+        const stale = key && cached(key);
+        if (stale) { resolve(stale); continue; }
+        await new Promise(r => setTimeout(r, 3000));
+        jikanQueue.unshift({ resolve, reject, url, params, key });
+        continue;
+      }
+      reject(e);
+    }
+  }
+  processingQueue = false;
+}
+
+function jikanGet(url, params = {}, key = null) {
+  return new Promise((resolve, reject) => {
+    const cachedData = key && cached(key);
+    if (cachedData) return resolve(cachedData);
+    jikanQueue.push({ resolve, reject, url, params, key });
+    processQueue();
+  });
+}
 
 app.use('/api/anime', async (req, res) => {
-  const key = req.originalUrl;
-  let data = cached(key);
-  if (data) return res.json(data);
   try {
-    const wait = Math.max(0, 400 - (Date.now() - lastJikan));
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    const r = await axios.get(`${JIKAN_BASE}${req.url}`, { params: req.query, timeout: 10000 });
-    lastJikan = Date.now();
-    cacheSet(key, r.data);
-    res.json(r.data);
+    const key = req.originalUrl;
+    const data = await jikanGet(`${JIKAN_BASE}${req.url}`, req.query, key);
+    res.json(data);
   } catch (e) {
-    if (e.response?.status === 429) { data = cached(key); if (data) return res.json(data); }
     res.status(e.response?.status || 500).json({ error: e.message });
   }
 });
 
 app.use('/api/search', async (req, res) => {
-  const key = req.originalUrl;
-  let data = cached(key);
-  if (data) return res.json(data);
   try {
     if (!req.query.q) return res.status(400).json({ error: 'Missing query' });
-    const wait = Math.max(0, 400 - (Date.now() - lastJikan));
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    const r = await axios.get(`${JIKAN_BASE}/anime`, { params: { q: req.query.q, sfw: true, limit: 25, ...req.query }, timeout: 10000 });
-    lastJikan = Date.now();
-    cacheSet(key, r.data);
-    res.json(r.data);
+    const key = req.originalUrl;
+    const data = await jikanGet(`${JIKAN_BASE}/anime`, { q: req.query.q, sfw: true, limit: 25, ...req.query }, key);
+    res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

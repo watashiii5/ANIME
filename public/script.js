@@ -1,10 +1,20 @@
+const FECache = new Map();
+
 const API = {
-  async get(endpoint, retries = 2) {
+  async get(endpoint, retries = 2, cacheKey = null) {
+    if (cacheKey) {
+      const cached = FECache.get(cacheKey);
+      if (cached && Date.now() - cached.time < 300000) return cached.data;
+    }
     for (let i = 0; i <= retries; i++) {
       const res = await fetch(endpoint);
-      if (res.ok) return res.json();
+      if (res.ok) {
+        const data = await res.json();
+        if (cacheKey) FECache.set(cacheKey, { data, time: Date.now() });
+        return data;
+      }
       if (res.status === 429 && i < retries) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 3000));
         continue;
       }
       let detail = '';
@@ -25,13 +35,13 @@ const API = {
     return this.get(`/api/anime/seasons/upcoming?page=${page}`);
   },
   animeDetail(id) {
-    return this.get(`/api/anime/anime/${id}/full`);
+    return this.get(`/api/anime/anime/${id}/full`, 2, `detail:${id}`);
   },
-  animeEpisodes(id, page = 1) {
-    return this.get(`/api/anime/anime/${id}/episodes?page=${page}`);
+  animeEpisodes(id) {
+    return this.get(`/api/anime/anime/${id}/episodes?page=1`, 2, `eps:${id}`);
   },
   topMovies(page = 1) {
-    return this.get(`/api/anime/top/anime?type=movie&page=${page}`);
+    return this.get(`/api/anime/top/anime?type=movie&page=${page}`, 2);
   },
   streamSearch(query) {
     return this.get(`/api/stream/search?q=${encodeURIComponent(query)}`);
@@ -194,10 +204,8 @@ async function renderHome() {
   document.querySelector('.nav-link[onclick*="home"]')?.classList.add('active');
 
   try {
-    const [trending, seasonal] = await Promise.all([
-      API.topAnime('airing', 1),
-      API.seasonalAnime(1)
-    ]);
+    const trending = await API.topAnime('airing', 1);
+    const seasonal = await API.seasonalAnime(1);
 
     const trendingAnime = trending.data?.slice(0, 18) || [];
     const seasonalAnime = seasonal.data?.slice(0, 18) || [];
@@ -256,10 +264,8 @@ async function renderDetail(id) {
   const app = document.getElementById('app');
 
   try {
-    const [detailRes, epsRes] = await Promise.all([
-      API.animeDetail(id),
-      API.animeEpisodes(id, 1)
-    ]);
+    const detailRes = await API.animeDetail(id);
+    const epsRes = await API.animeEpisodes(id, 1);
 
     const a = detailRes.data;
     const eps = epsRes.data || [];
@@ -709,10 +715,8 @@ async function renderSeasonal() {
   document.querySelector('.nav-link[onclick*="seasonal"]')?.classList.add('active');
 
   try {
-    const [seasonal, upcoming] = await Promise.all([
-      API.seasonalAnime(1),
-      API.upcomingAnime(1)
-    ]);
+    const seasonal = await API.seasonalAnime(1);
+    const upcoming = await API.upcomingAnime(1);
 
     const now = new Date();
     const season = ['winter', 'spring', 'summer', 'fall'][Math.floor(now.getMonth() / 3)];
@@ -751,10 +755,8 @@ async function renderTop() {
   document.querySelector('.nav-link[onclick*="top"]')?.classList.add('active');
 
   try {
-    const [popular, favorite] = await Promise.all([
-      API.topAnime('bypopularity', 1),
-      API.topAnime('favorite', 1)
-    ]);
+    const popular = await API.topAnime('bypopularity', 1);
+    const favorite = await API.topAnime('favorite', 1);
 
     let html = `
       <h1 class="page-title">🏆 Top Rated Anime</h1>
