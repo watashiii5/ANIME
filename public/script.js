@@ -754,19 +754,43 @@ let lastVideoUrl = '';
 let lastVideoHeaders = null;
 
 function showVideoFallback(container, msg) {
-  const providerName = currentProvider === 'hianime' ? 'HiAnime' : currentProvider === 'animesaturn' ? 'AnimeSaturn' : currentProvider === 'animeunity' ? 'AnimeUnity' : currentProvider || 'Provider';
+  const embedUrl = currentEpisodeUrl || (lastVideoHeaders && lastVideoHeaders.Referer);
+  if (embedUrl) {
+    tryEmbedPlayer(container, embedUrl);
+    return;
+  }
   container.innerHTML = `
     <div class="video-placeholder">
       <div style="font-size:48px">⚠️</div>
-      <p>${msg ? 'Failed to load video' : 'Video failed to load (source blocked)'}</p>
-      ${msg ? `<p style="font-size:12px;color:var(--text3)">${msg}</p>` : '<p style="font-size:12px;color:var(--text3)">The CDN blocks our server. Click below to watch directly on the provider:</p>'}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px">
-        ${lastVideoUrl ? `<button class="btn btn-secondary" onclick="tryDirectPlay()">▶ Direct Play</button>` : ''}
-        <button class="btn btn-primary" onclick="openEpisodeTab()" style="padding:10px 24px;font-size:15px">
-          ▶ Watch on ${providerName}
-        </button>
-      </div>
+      <p>${msg ? 'Failed to load video' : 'No video source found'}</p>
+      <p style="font-size:12px;color:var(--text3)">Try another episode</p>
     </div>`;
+}
+
+function tryEmbedPlayer(container, url) {
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+  if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
+  const providerName = currentProvider === 'hianime' ? 'HiAnime' : currentProvider === 'animesaturn' ? 'AnimeSaturn' : currentProvider === 'animeunity' ? 'AnimeUnity' : 'Provider';
+  container.innerHTML = `
+    <div class="embed-container">
+      <iframe src="${url}"
+        allowfullscreen
+        allow="autoplay; fullscreen"
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+        loading="lazy"
+        style="width:100%;height:100%;border:none;background:#000">
+      </iframe>
+    </div>
+    <div style="text-align:center;padding:8px;font-size:12px;color:var(--text3)">
+      Playing via ${providerName}
+      <button class="btn btn-secondary" onclick="window.open('${url}','_blank')" style="font-size:11px;padding:2px 8px;margin-left:8px">Open in Tab</button>
+    </div>`;
+  if (currentAnimeId && currentEpisodeId) {
+    Tracker.saveProgress(
+      currentAnimeId, currentAnimeTitle, currentAnimeImage,
+      currentEpisodeId, currentEpisodeNumber, 0, 0
+    );
+  }
 }
 
 function tryDirectPlay() {
@@ -786,15 +810,8 @@ function tryDirectPlay() {
     video.src = lastVideoUrl;
   }
   video.addEventListener('error', () => {
-    const providerName = currentProvider === 'hianime' ? 'HiAnime' : currentProvider === 'animesaturn' ? 'AnimeSaturn' : currentProvider === 'animeunity' ? 'AnimeUnity' : 'Provider';
-    container.innerHTML = `
-      <div class="video-placeholder">
-        <div style="font-size:48px">😕</div>
-        <p>Direct play also failed</p>
-        <button class="btn btn-primary" onclick="openEpisodeTab()" style="margin-top:12px;padding:10px 24px;font-size:15px">
-          ▶ Watch on ${providerName}
-        </button>
-      </div>`;
+    const embedUrl = currentEpisodeUrl || (lastVideoHeaders && lastVideoHeaders.Referer);
+    if (embedUrl) tryEmbedPlayer(container, embedUrl);
   });
 }
 
