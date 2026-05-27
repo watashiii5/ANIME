@@ -55,7 +55,7 @@ const API = {
     let url = `/api/stream/watch?episodeId=${encodeURIComponent(episodeId)}`;
     if (provider) url += `&provider=${provider}`;
     return this.get(url);
-  }
+  },
   getSubtitles(query, episode) {
     return this.get(`/api/subtitles?q=${encodeURIComponent(query)}&episode=${episode}`);
   }
