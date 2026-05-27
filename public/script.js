@@ -51,8 +51,10 @@ const API = {
     if (provider) url += `&provider=${provider}`;
     return this.get(url);
   },
-  streamWatch(episodeId) {
-    return this.get(`/api/stream/watch?episodeId=${encodeURIComponent(episodeId)}`);
+  streamWatch(episodeId, provider) {
+    let url = `/api/stream/watch?episodeId=${encodeURIComponent(episodeId)}`;
+    if (provider) url += `&provider=${provider}`;
+    return this.get(url);
   }
 };
 
@@ -448,7 +450,7 @@ async function renderWatch(params) {
 
     const searchRes = await API.streamSearch(a.title);
     let streamResults = searchRes.results || [];
-    let currentProvider = searchRes.provider;
+    currentProvider = searchRes.provider;
 
     if (streamResults.length === 0 && a.title_english) {
       const r2 = await API.streamSearch(a.title_english);
@@ -571,6 +573,7 @@ let currentAnimeTitle = '';
 let currentAnimeImage = '';
 let currentEpisodeId = null;
 let currentEpisodeNumber = 1;
+let currentProvider = '';
 
 function doFallbackSearch() {
   const input = document.getElementById('fallbackSearch');
@@ -602,8 +605,10 @@ async function loadVideo(episodeId, resumeTime) {
   container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading stream...</p></div>';
 
   try {
-    const res = await API.streamWatch(episodeId);
+    const res = await API.streamWatch(episodeId, currentProvider);
     const sources = res.sources || [];
+    const headers = res.headers || {};
+    const referer = headers.Referer || '';
 
     let selectedSource = sources.find(s => s.quality === '1080p')
       || sources.find(s => s.quality === '720p')
@@ -620,8 +625,14 @@ async function loadVideo(episodeId, resumeTime) {
       return;
     }
 
-    const videoUrl = selectedSource.url;
+    let videoUrl = selectedSource.url;
     const isM3U8 = videoUrl.includes('.m3u8');
+
+    if (isM3U8) {
+      const params = new URLSearchParams({ url: videoUrl });
+      if (referer) params.set('referer', referer);
+      videoUrl = `/api/proxy-hls?${params.toString()}`;
+    }
 
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
@@ -687,12 +698,13 @@ async function loadVideo(episodeId, resumeTime) {
       });
     }
 
-    video.addEventListener('error', () => {
+    video.addEventListener('error', (e) => {
       if (container.querySelector('video')) {
         container.innerHTML = `
           <div class="video-placeholder">
             <div style="font-size:48px">⚠️</div>
-            <p>Video failed to load</p>
+            <p>Video failed to load (source blocked)</p>
+            <p style="font-size:12px;color:var(--text3)">Try another episode or come back later</p>
           </div>`;
       }
     });
@@ -701,6 +713,7 @@ async function loadVideo(episodeId, resumeTime) {
       <div class="video-placeholder">
         <div style="font-size:48px">⚠️</div>
         <p>Failed to load video</p>
+        <p style="font-size:12px;color:var(--text3)">${err.message}</p>
       </div>`;
   }
 }
