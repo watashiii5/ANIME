@@ -657,17 +657,25 @@ async function loadVideo(episodeId, resumeTime) {
     lastVideoUrl = videoUrl;
     lastVideoHeaders = res.headers || null;
 
-    if (isM3U8) {
-      const params = new URLSearchParams({ url: videoUrl });
-      if (referer) params.set('referer', referer);
-      videoUrl = `/api/proxy-hls?${params.toString()}`;
-    }
+    const subtitles = res.subtitles || [];
+    const englishSub = subtitles.find(s => s.lang && (s.lang.toLowerCase().includes('english') || s.lang.toLowerCase() === 'en'));
 
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
 
     container.innerHTML = `<video id="animeVideo" controls autoplay></video>`;
     const video = document.getElementById('animeVideo');
+    video.crossOrigin = 'anonymous';
+
+    if (englishSub) {
+      const track = document.createElement('track');
+      track.kind = 'subtitles';
+      track.label = 'English';
+      track.srclang = 'en';
+      track.src = englishSub.url;
+      track.default = true;
+      video.appendChild(track);
+    }
 
     function onVideoReady() {
       if (resumeTime > 0 && video.duration && resumeTime < video.duration - 5) {
@@ -712,6 +720,11 @@ async function loadVideo(episodeId, resumeTime) {
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
         video.play().catch(() => {});
         onVideoReady();
+      });
+      hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          showVideoFallback(container);
+        }
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = videoUrl;
