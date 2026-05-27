@@ -130,6 +130,7 @@ const Tracker = {
 let hlsInstance = null;
 let searchState = { query: '', page: 1, type: '', status: '', data: null };
 let progressInterval = null;
+let homePages = { trending: 1, seasonal: 1 };
 
 function navigate(page, params) {
   const app = document.getElementById('app');
@@ -149,6 +150,16 @@ function navigate(page, params) {
   }
 }
 
+function renderBroadcast(a) {
+  if (a.broadcast?.day) return `${a.broadcast.day} ${a.broadcast.time || ''}`;
+  if (a.aired?.from) {
+    const d = new Date(a.aired.from);
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[d.getMonth()]} ${d.getFullYear()}`;
+  }
+  return a.year ? `${a.year}` : '';
+}
+
 function renderSection(title, items, extra) {
   if (!items || items.length === 0) return '';
   return `
@@ -156,6 +167,26 @@ function renderSection(title, items, extra) {
       <div class="section-header">
         <h2 class="section-title">${title}</h2>
         ${extra || ''}
+      </div>
+      <div class="anime-grid">${items.map(a => renderCard(a)).join('')}</div>
+    </div>`;
+}
+
+function renderSectionPaged(id, title, items, page, pagination) {
+  if (!items || items.length === 0) return '';
+  const hasPrev = page > 1;
+  const hasNext = pagination?.has_next_page;
+  const lastPage = pagination?.last_visible_page || page;
+
+  return `
+    <div class="section" id="section-${id}">
+      <div class="section-header">
+        <h2 class="section-title">${title}</h2>
+        <div class="section-controls">
+          ${hasPrev ? `<button class="page-btn" onclick="loadSectionPage('${id}', ${page - 1})">← Prev</button>` : ''}
+          <span class="page-num">${page}${lastPage > 1 ? ` / ${lastPage}` : ''}</span>
+          ${hasNext ? `<button class="page-btn" onclick="loadSectionPage('${id}', ${page + 1})">Next →</button>` : ''}
+        </div>
       </div>
       <div class="anime-grid">${items.map(a => renderCard(a)).join('')}</div>
     </div>`;
@@ -169,12 +200,14 @@ function renderCard(anime) {
   const type = anime.type || '';
   const isAiring = anime.airing;
   const id = anime.mal_id;
+  const bc = renderBroadcast(anime);
 
   return `
     <div class="anime-card" onclick="navigate('detail', ${id})">
       <img class="anime-card-img" src="${img}" alt="${title}" loading="lazy">
       ${!isAiring && ep ? '<span class="anime-card-badge">Complete</span>' : ''}
       ${score ? `<span class="anime-card-score">${score}</span>` : ''}
+      ${isAiring && bc ? `<span class="anime-card-schedule">📅 ${bc}</span>` : ''}
       <div class="anime-card-body">
         <div class="anime-card-title">${title}</div>
         <div class="anime-card-sub">${[type, ep].filter(Boolean).join(' • ')}</div>
@@ -199,9 +232,12 @@ function renderContinueCard(entry) {
     </div>`;
 }
 
+let carouselInterval = null;
+
 async function renderHome() {
   const app = document.getElementById('app');
   document.querySelector('.nav-link[onclick*="home"]')?.classList.add('active');
+  if (carouselInterval) { clearInterval(carouselInterval); carouselInterval = null; }
 
   try {
     const trending = await API.topAnime('airing', 1);
@@ -209,7 +245,7 @@ async function renderHome() {
 
     const trendingAnime = trending.data?.slice(0, 18) || [];
     const seasonalAnime = seasonal.data?.slice(0, 18) || [];
-    const featured = trendingAnime[0] || seasonalAnime[0];
+    const carouselItems = trending.data?.slice(0, 7) || seasonal.data?.slice(0, 7) || [];
     const continueWatching = Tracker.getContinueWatching();
 
     let html = '';
@@ -224,39 +260,107 @@ async function renderHome() {
         </div>`;
     }
 
-    if (featured) {
-      const synopsis = featured.synopsis || '';
-      const genres = featured.genres?.map(g => g.name).join(', ') || '';
+    html += `<div class="carousel" id="heroCarousel">`;
+    carouselItems.forEach((a, i) => {
+      const synopsis = a.synopsis || '';
+      const genres = a.genres?.map(g => g.name).join(', ') || '';
+      const bc = renderBroadcast(a);
       html += `
-        <div class="hero">
-          <div class="hero-bg" style="background-image: url('${featured.images?.jpg?.large_image_url || ''}')"></div>
-          <div class="hero-content">
-            <img class="hero-poster" src="${featured.images?.jpg?.large_image_url || ''}" alt="${featured.title}" loading="lazy">
-            <div class="hero-info">
-              <div class="hero-title">${featured.title}</div>
-              <div class="hero-meta">
-                <span>⭐ ${featured.score || 'N/A'}</span>
-                <span>📺 ${featured.type || 'TV'}</span>
-                <span>📅 ${featured.year || 'N/A'}</span>
-                <span>🎬 ${featured.episodes || '?'} eps</span>
-                <span>${genres}</span>
+        <div class="carousel-slide ${i === 0 ? 'active' : ''}" data-index="${i}">
+          <div class="carousel-bg" style="background-image: url('${a.images?.jpg?.large_image_url || ''}')"></div>
+          <div class="carousel-content">
+            <div class="carousel-info">
+              <div class="carousel-title">${a.title}</div>
+              <div class="carousel-meta">
+                <span>⭐ ${a.score || 'N/A'}</span>
+                <span>📺 ${a.type || 'TV'}</span>
+                <span>🎬 ${a.episodes || '?'} eps</span>
+                ${bc ? `<span>📅 ${bc}</span>` : ''}
+                ${a.airing ? '<span class="live-badge">● LIVE</span>' : ''}
               </div>
-              <div class="hero-desc">${synopsis.substring(0, 300)}${synopsis.length > 300 ? '...' : ''}</div>
-              <div class="hero-actions">
-                <button class="btn btn-primary" onclick="navigate('detail', ${featured.mal_id})">📋 Details</button>
-                <button class="btn btn-secondary" onclick="navigate('watch', {animeId:${featured.mal_id},title:'${featured.title.replace(/'/g, "\\'")}'})">▶ Watch Now</button>
+              <div class="carousel-desc">${synopsis.substring(0, 250)}${synopsis.length > 250 ? '...' : ''}</div>
+              <div class="carousel-actions">
+                <button class="btn btn-primary" onclick="navigate('detail', ${a.mal_id})">📋 Details</button>
+                <button class="btn btn-secondary" onclick="navigate('watch', {animeId:${a.mal_id},title:'${a.title.replace(/'/g, "\\'")}'})">▶ Watch Now</button>
               </div>
             </div>
+            <img class="carousel-poster" src="${a.images?.jpg?.large_image_url || ''}" alt="${a.title}" loading="lazy">
           </div>
         </div>`;
-    }
+    });
+    html += `
+        <button class="carousel-btn carousel-prev" onclick="carouselPrev()">‹</button>
+        <button class="carousel-btn carousel-next" onclick="carouselNext()">›</button>
+        <div class="carousel-dots">
+          ${carouselItems.map((_, i) => `<span class="carousel-dot ${i === 0 ? 'active' : ''}" onclick="carouselGo(${i})"></span>`).join('')}
+        </div>
+      </div>`;
 
-    html += renderSection('Trending Now', trendingAnime);
-    html += renderSection('Current Season', seasonalAnime);
+    homePages.trending = 1;
+    homePages.seasonal = 1;
+
+    html += renderSectionPaged('trending', 'Trending Now', trendingAnime, 1, trending.pagination || {});
+    html += renderSectionPaged('seasonal', 'Current Season', seasonalAnime, 1, seasonal.pagination || {});
 
     app.innerHTML = html;
+
+    startCarousel();
   } catch (err) {
     app.innerHTML = `<div class="no-results"><p>⚠️ Failed to load</p><p>${err.message}. Try refreshing.</p></div>`;
+  }
+}
+
+function startCarousel() {
+  const slides = document.querySelectorAll('.carousel-slide');
+  const dots = document.querySelectorAll('.carousel-dot');
+  if (slides.length < 2) return;
+  let current = 0;
+
+  function show(idx) {
+    slides.forEach(s => s.classList.remove('active'));
+    dots.forEach(d => d.classList.remove('active'));
+    current = (idx + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    dots[current].classList.add('active');
+  }
+
+  if (carouselInterval) clearInterval(carouselInterval);
+  carouselInterval = setInterval(() => show(current + 1), 6000);
+
+  const carousel = document.getElementById('heroCarousel');
+  carousel.onmouseenter = () => { if (carouselInterval) clearInterval(carouselInterval); carouselInterval = null; };
+  carousel.onmouseleave = () => {
+    if (carouselInterval) clearInterval(carouselInterval);
+    carouselInterval = setInterval(() => {
+      const cur = [...slides].findIndex(s => s.classList.contains('active'));
+      show(cur + 1);
+    }, 6000);
+  };
+
+  window.carouselGo = (i) => { show(i); if (carouselInterval) { clearInterval(carouselInterval); carouselInterval = null; } };
+  window.carouselNext = () => { const cur = [...slides].findIndex(s => s.classList.contains('active')); show(cur + 1); if (carouselInterval) { clearInterval(carouselInterval); carouselInterval = null; } };
+  window.carouselPrev = () => { const cur = [...slides].findIndex(s => s.classList.contains('active')); show(cur - 1); if (carouselInterval) { clearInterval(carouselInterval); carouselInterval = null; } };
+}
+
+async function loadSectionPage(id, page) {
+  homePages[id] = page;
+  const section = document.getElementById(`section-${id}`);
+  if (!section) return;
+  section.innerHTML = '<div class="loading" style="padding:20px"><div class="spinner"></div></div>';
+
+  try {
+    let data;
+    if (id === 'trending') {
+      data = await API.topAnime('airing', page);
+    } else {
+      data = await API.seasonalAnime(page);
+    }
+
+    const items = data.data?.slice(0, 18) || [];
+    const titles = { trending: 'Trending Now', seasonal: 'Current Season' };
+    section.outerHTML = renderSectionPaged(id, titles[id] || id, items, page, data.pagination || {});
+  } catch (e) {
+    section.innerHTML = `<div class="no-results" style="padding:20px"><p>Failed: ${e.message}</p></div>`;
   }
 }
 
