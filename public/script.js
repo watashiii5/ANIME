@@ -490,6 +490,8 @@ async function renderWatch(params) {
     }
 
     episodes.sort((a, b) => a.number - b.number);
+    episodeUrlMap = {};
+    episodes.forEach(ep => { episodeUrlMap[ep.id] = ep.url || ''; });
 
     const savedProgress = Tracker.getProgress(params.animeId);
     let targetEpisodeNumber = 1;
@@ -507,6 +509,7 @@ async function renderWatch(params) {
       currentAnimeImage = animeImage;
       currentEpisodeId = targetEp.id;
       currentEpisodeNumber = targetEp.number;
+      currentEpisodeUrl = episodeUrlMap[targetEp.id] || '';
     }
 
     let html = `
@@ -574,6 +577,8 @@ let currentAnimeImage = '';
 let currentEpisodeId = null;
 let currentEpisodeNumber = 1;
 let currentProvider = '';
+let currentEpisodeUrl = '';
+let episodeUrlMap = {};
 
 function doFallbackSearch() {
   const input = document.getElementById('fallbackSearch');
@@ -587,6 +592,7 @@ function loadEpisode(episodeId, number, animeId, title, image) {
   currentAnimeId = animeId;
   currentAnimeTitle = title;
   currentAnimeImage = image;
+  currentEpisodeUrl = episodeUrlMap[episodeId] || '';
 
   document.querySelectorAll('.watch-ep-btn').forEach(b => b.classList.remove('active'));
   const btn = document.querySelector(`.watch-ep-btn[onclick*="loadEpisode('${episodeId}'"]`);
@@ -698,23 +704,55 @@ async function loadVideo(episodeId, resumeTime) {
       });
     }
 
-    video.addEventListener('error', (e) => {
+    video.addEventListener('error', () => {
       if (container.querySelector('video')) {
-        container.innerHTML = `
-          <div class="video-placeholder">
-            <div style="font-size:48px">⚠️</div>
-            <p>Video failed to load (source blocked)</p>
-            <p style="font-size:12px;color:var(--text3)">Try another episode or come back later</p>
-          </div>`;
+        showEmbedFallback(container);
       }
     });
   } catch (err) {
-    container.innerHTML = `
-      <div class="video-placeholder">
-        <div style="font-size:48px">⚠️</div>
-        <p>Failed to load video</p>
-        <p style="font-size:12px;color:var(--text3)">${err.message}</p>
-      </div>`;
+    showEmbedFallback(container, err.message);
+  }
+}
+
+function showEmbedFallback(container, msg) {
+  const canEmbed = currentEpisodeUrl && (
+    currentEpisodeUrl.includes('animesaturn') ||
+    currentEpisodeUrl.includes('animeunity')
+  );
+  container.innerHTML = `
+    <div class="video-placeholder">
+      <div style="font-size:48px">⚠️</div>
+      <p>${msg ? 'Failed to load video' : 'Video failed to load (source blocked)'}</p>
+      ${msg ? `<p style="font-size:12px;color:var(--text3)">${msg}</p>` : ''}
+      ${canEmbed ? `
+        <button class="btn btn-primary" onclick="switchToEmbed()" style="margin-top:12px">
+          ▶ Switch to Embed Player
+        </button>
+      ` : `
+        <p style="font-size:12px;color:var(--text3)">Try another episode or come back later</p>
+      `}
+    </div>`;
+}
+
+function switchToEmbed() {
+  const container = document.getElementById('videoPlayer');
+  if (!container || !currentEpisodeUrl) return;
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+  if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
+  container.innerHTML = `
+    <div class="embed-container">
+      <iframe src="${currentEpisodeUrl}"
+        allowfullscreen
+        allow="autoplay; fullscreen"
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+        loading="lazy">
+      </iframe>
+    </div>`;
+  if (currentAnimeId && currentEpisodeId) {
+    Tracker.saveProgress(
+      currentAnimeId, currentAnimeTitle, currentAnimeImage,
+      currentEpisodeId, currentEpisodeNumber, 0, 0
+    );
   }
 }
 
