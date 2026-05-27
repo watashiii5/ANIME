@@ -452,10 +452,18 @@ async function renderWatch(params) {
     let bestMatch = null;
     let episodes = [];
 
-    const searchTitles = [a.title, a.title_english].filter(Boolean);
-    const uniqueTitles = [...new Set(searchTitles)];
+    const variants = [];
+    for (const t of [...new Set([a.title, a.title_english].filter(Boolean))]) {
+      variants.push(t);
+      const stripped = t.replace(/\d+(st|nd|rd|th)\s+Season/gi, '').replace(/Season\s+\d+/gi, '').trim();
+      if (stripped !== t && stripped) variants.push(stripped);
+      const short = t.substring(0, 30).trim();
+      if (short !== t) variants.push(short);
+    }
+    const seen = new Set();
+    const searchTitles = variants.filter(v => { const key = v.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; });
 
-    for (const title of uniqueTitles) {
+    for (const title of searchTitles) {
       const searchRes = await API.streamSearch(title);
       streamResults = searchRes.results || [];
       currentProvider = searchRes.provider;
