@@ -56,6 +56,9 @@ const API = {
     if (provider) url += `&provider=${provider}`;
     return this.get(url);
   }
+  getSubtitles(query, episode) {
+    return this.get(`/api/subtitles?q=${encodeURIComponent(query)}&episode=${episode}`);
+  }
 };
 
 const Tracker = {
@@ -657,6 +660,12 @@ async function loadVideo(episodeId, resumeTime) {
     lastVideoUrl = videoUrl;
     lastVideoHeaders = res.headers || null;
 
+    if (isM3U8) {
+      const params = new URLSearchParams({ url: videoUrl });
+      if (referer) params.set('referer', referer);
+      videoUrl = `/api/proxy-hls?${params.toString()}`;
+    }
+
     const subtitles = res.subtitles || [];
     const englishSub = subtitles.find(s => s.lang && (s.lang.toLowerCase().includes('english') || s.lang.toLowerCase() === 'en'));
 
@@ -667,6 +676,7 @@ async function loadVideo(episodeId, resumeTime) {
     const video = document.getElementById('animeVideo');
     video.crossOrigin = 'anonymous';
 
+    // Try provider subtitles first, then fallback to OpenSubtitles
     if (englishSub) {
       const track = document.createElement('track');
       track.kind = 'subtitles';
@@ -675,6 +685,18 @@ async function loadVideo(episodeId, resumeTime) {
       track.src = englishSub.url;
       track.default = true;
       video.appendChild(track);
+    } else if (currentAnimeTitle) {
+      API.getSubtitles(currentAnimeTitle, currentEpisodeNumber).then(subs => {
+        if (subs && subs.en && subs.en.vtt) {
+          const track = document.createElement('track');
+          track.kind = 'subtitles';
+          track.label = 'English';
+          track.srclang = 'en';
+          track.src = subs.en.vtt;
+          track.default = true;
+          video.appendChild(track);
+        }
+      }).catch(() => {});
     }
 
     function onVideoReady() {

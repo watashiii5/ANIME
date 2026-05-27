@@ -178,6 +178,89 @@ app.get('/api/stream/watch', async (req, res) => {
   }
 });
 
+const OS = require('opensubtitles-api');
+const osClient = new OS('WatashiStream v1.0');
+
+app.get('/api/subtitles', async (req, res) => {
+  try {
+    const query = req.query.q;
+    const episode = req.query.episode;
+    const season = req.query.season || '1';
+    if (!query) return res.status(400).json({ error: 'Missing query' });
+    const result = await osClient.search({ sublanguageid: 'eng', query, season, episode: episode || '' });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: 'Subtitle search failed', detail: e.message });
+  }
+});
+
+app.get('/api/proxy-hls', async (req, res) => {
+  try {
+    const url = req.query.url;
+    if (!url) return res.status(400).json({ error: 'Missing url' });
+
+    const response = await axios.get(url, {
+      responseType: 'stream', timeout: 30000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': req.query.referer || 'https://www.animeunity.to',
+      },
+      validateStatus: () => true
+    });
+
+    if (response.status !== 200) {
+      return res.status(502).json({ error: 'Upstream ' + response.status });
+    }
+
+    res.setHeader('Content-Type', response.headers['content-type'] || 'application/vnd.apple.mpegurl');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=30');
+
+    let data = '';
+    response.data.on('data', chunk => data += chunk.toString());
+    response.data.on('end', () => {
+      const base = url.substring(0, url.lastIndexOf('/') + 1);
+      const segments = data.split('\n').map(line => {
+        const t = line.trim();
+        if (!t) return line;
+        if (t.startsWith('#')) return line;
+        const segmentUrl = t.startsWith('http') ? t : new URL(t, base).href;
+        return `/api/proxy-segment?referer=${encodeURIComponent(req.query.referer || '')}&url=${encodeURIComponent(segmentUrl)}`;
+      }).join('\n');
+      res.send(segments);
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'HLS proxy failed', detail: e.message });
+  }
+});
+
+app.get('/api/proxy-segment', async (req, res) => {
+  try {
+    const url = req.query.url;
+    if (!url) return res.status(400).json({ error: 'Missing url' });
+
+    const response = await axios.get(url, {
+      responseType: 'stream', timeout: 30000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': req.query.referer || 'https://www.animeunity.to',
+      },
+      validateStatus: () => true
+    });
+
+    if (response.status !== 200) {
+      return res.status(502).json({ error: 'Segment error ' + response.status });
+    }
+
+    res.setHeader('Content-Type', response.headers['content-type'] || 'video/MP2T');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    response.data.pipe(res);
+  } catch (e) {
+    res.status(500).json({ error: 'Segment proxy failed' });
+  }
+});
+
 app.get('/api/embed-page', async (req, res) => {
   try {
     const url = req.query.url;
