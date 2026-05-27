@@ -448,21 +448,29 @@ async function renderWatch(params) {
     animeTitle = a.title || animeTitle;
     const animeImage = a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '';
 
-    const searchRes = await API.streamSearch(a.title);
-    let streamResults = searchRes.results || [];
-    currentProvider = searchRes.provider;
+    let streamResults = [];
+    let bestMatch = null;
+    let episodes = [];
 
-    if (streamResults.length === 0 && a.title_english) {
-      const r2 = await API.streamSearch(a.title_english);
-      streamResults = r2.results || [];
-      currentProvider = r2.provider || currentProvider;
+    const searchTitles = [a.title, a.title_english].filter(Boolean);
+    const uniqueTitles = [...new Set(searchTitles)];
+
+    for (const title of uniqueTitles) {
+      const searchRes = await API.streamSearch(title);
+      streamResults = searchRes.results || [];
+      currentProvider = searchRes.provider;
+      bestMatch = streamResults.find(r => {
+        const t = title.toLowerCase();
+        const rt = (r.title || '').toLowerCase();
+        return rt.includes(t.substring(0, 15)) || t.includes(rt.substring(0, 15));
+      }) || streamResults[0];
+
+      if (bestMatch) {
+        const infoRes = await API.streamInfo(bestMatch.id, currentProvider);
+        episodes = infoRes.episodes || [];
+        if (episodes.length > 0) break;
+      }
     }
-
-    let bestMatch = streamResults.find(r => {
-      const t = animeTitle.toLowerCase();
-      const rt = (r.title || '').toLowerCase();
-      return rt.includes(t.substring(0, 15)) || t.includes(rt.substring(0, 15));
-    }) || streamResults[0];
 
     if (!bestMatch) {
       app.innerHTML = `
@@ -477,13 +485,15 @@ async function renderWatch(params) {
       return;
     }
 
-    const infoRes = await API.streamInfo(bestMatch.id, currentProvider);
-    let episodes = infoRes.episodes || [];
-
     if (episodes.length === 0) {
       app.innerHTML = `
         <div class="no-results">
           <p>😕 No episodes available for "${animeTitle}"</p>
+          <p style="font-size:13px;color:var(--text3)">The streaming provider may not have this anime. Try a different title:</p>
+          <div class="search-input-lg" style="margin:12px auto;max-width:400px">
+            <input type="text" id="fallbackSearch" value="${animeTitle}" placeholder="Search streaming..." onkeydown="if(event.key==='Enter') doFallbackSearch()">
+            <button onclick="doFallbackSearch()">Search</button>
+          </div>
           <button class="btn btn-primary" onclick="navigate('detail', ${params.animeId})">← Back to Details</button>
         </div>`;
       return;
