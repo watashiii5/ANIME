@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AnimeStream - Watch Anime Free</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a href="#" class="logo" onclick="navigate('home')">AnimeStream</a>
+      <nav class="nav">
+        <a href="#" onclick="navigate('home')" class="nav-link active">Home</a>
+        <a href="#" onclick="navigate('seasonal')" class="nav-link">Seasonal</a>
+        <a href="#" onclick="navigate('movies')" class="nav-link">Movies</a>
+        <a href="#" onclick="navigate('top')" class="nav-link">Top Rated</a>
+      </nav>
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Search anime..." onkeydown="if(event.key==='Enter') handleSearch()">
+        <button onclick="handleSearch()">Search</button>
+      </div>
+      <button class="menu-toggle" onclick="toggleMobileMenu()">☰</button>
+    </div>
+  </header>
+
+  <main id="app">
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>Loading...</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>AnimeStream - Free Anime Streaming. This site uses public APIs for educational purposes.</p>
+  </footer>
+
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="#" onclick="navigate('home'); toggleMobileMenu();">Home</a>
+    <a href="#" onclick="navigate('seasonal'); toggleMobileMenu();">Seasonal</a>
+    <a href="#" onclick="navigate('movies'); toggleMobileMenu();">Movies</a>
+    <a href="#" onclick="navigate('top'); toggleMobileMenu();">Top Rated</a>
+    <hr>
+    <input type="text" id="mobileSearchInput" placeholder="Search anime..." onkeydown="if(event.key==='Enter') { handleMobileSearch(); toggleMobileMenu(); }">
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="script.js"></script>
+</body>
+</html>
