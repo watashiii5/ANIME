@@ -635,6 +635,7 @@ async function loadVideo(episodeId, resumeTime) {
     const sources = res.sources || [];
     const headers = res.headers || {};
     const referer = headers.Referer || '';
+    if (!currentEpisodeUrl && referer) currentEpisodeUrl = referer;
 
     let selectedSource = sources.find(s => s.quality === '1080p')
       || sources.find(s => s.quality === '720p')
@@ -740,18 +741,18 @@ let lastVideoUrl = '';
 let lastVideoHeaders = null;
 
 function showVideoFallback(container, msg) {
+  const providerName = currentProvider === 'gogoanime' ? 'Gogoanime' : currentProvider === 'animesaturn' ? 'AnimeSaturn' : currentProvider === 'animeunity' ? 'AnimeUnity' : currentProvider || 'Provider';
   container.innerHTML = `
     <div class="video-placeholder">
       <div style="font-size:48px">⚠️</div>
       <p>${msg ? 'Failed to load video' : 'Video failed to load (source blocked)'}</p>
-      ${msg ? `<p style="font-size:12px;color:var(--text3)">${msg}</p>` : ''}
+      ${msg ? `<p style="font-size:12px;color:var(--text3)">${msg}</p>` : '<p style="font-size:12px;color:var(--text3)">The CDN blocks our server. Click below to watch directly on the provider:</p>'}
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px">
-        ${lastVideoUrl ? `<button class="btn btn-secondary" onclick="tryDirectPlay()">▶ Try Direct Play</button>` : ''}
-        ${currentEpisodeUrl ? `
-          <button class="btn btn-secondary" onclick="openEpisodeTab()">↗ Open on Provider</button>
-        ` : ''}
+        ${lastVideoUrl ? `<button class="btn btn-secondary" onclick="tryDirectPlay()">▶ Direct Play</button>` : ''}
+        <button class="btn btn-primary" onclick="openEpisodeTab()" style="padding:10px 24px;font-size:15px">
+          ▶ Watch on ${providerName}
+        </button>
       </div>
-      ${!lastVideoUrl && !currentEpisodeUrl ? '<p style="font-size:12px;color:var(--text3)">Try another episode or come back later</p>' : ''}
     </div>`;
 }
 
@@ -772,17 +773,21 @@ function tryDirectPlay() {
     video.src = lastVideoUrl;
   }
   video.addEventListener('error', () => {
+    const providerName = currentProvider === 'gogoanime' ? 'Gogoanime' : currentProvider === 'animesaturn' ? 'AnimeSaturn' : currentProvider === 'animeunity' ? 'AnimeUnity' : 'Provider';
     container.innerHTML = `
       <div class="video-placeholder">
         <div style="font-size:48px">😕</div>
         <p>Direct play also failed</p>
-        ${currentEpisodeUrl ? `<button class="btn btn-primary" onclick="openEpisodeTab()" style="margin-top:12px">↗ Open on Provider</button>` : ''}
+        <button class="btn btn-primary" onclick="openEpisodeTab()" style="margin-top:12px;padding:10px 24px;font-size:15px">
+          ▶ Watch on ${providerName}
+        </button>
       </div>`;
   });
 }
 
 function openEpisodeTab() {
-  if (currentEpisodeUrl) window.open(currentEpisodeUrl, '_blank');
+  const url = currentEpisodeUrl || (lastVideoHeaders && lastVideoHeaders.Referer);
+  if (url) window.open(url, '_blank');
 }
 
 async function renderSearch(query) {
